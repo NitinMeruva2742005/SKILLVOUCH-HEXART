@@ -1,0 +1,96 @@
+/* Theme Variables for Light/Dark Mode */
+:root {
+  /* Light Mode Colors */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --accent-primary: #6366f1;
+  --accent-secondary: #8b5cf6;
+  --border-color: #e5e7eb;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  /* Dark Mode Colors */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #6366f1;
+  --border-color: #334155;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Theme-aware component styles */
+.theme-bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.theme-bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.theme-text-primary {
+  color: var(--text-primary);
+}
+
+.theme-text-secondary {
+  color: var(--text-secondary);
+}
+
+.theme-accent-primary {
+  color: var(--accent-primary);
+}
+
+.theme-border {
+  border-color: var(--border-color);
+}
+
+/* Override Tailwind's default dark mode classes to use our CSS variables */
+.bg-slate-50 {
+  background-color: var(--bg-primary);
+}
+
+.bg-white {
+  background-color: var(--bg-secondary);
+}
+
+.text-slate-900 {
+  color: var(--text-primary);
+}
+
+.text-slate-600 {
+  color: var(--text-secondary);
+}
+
+.border-slate-200 {
+  border-color: var(--border-color);
+}
+
+/* Dark mode overrides */
+.dark .bg-slate-900 {
+  background-color: var(--bg-primary);
+}
+
+.dark .bg-slate-800 {
+  background-color: var(--bg-secondary);
+}
+
+.dark .text-slate-100 {
+  color: var(--text-primary);
+}
+
+.dark .text-slate-400 {
+  color: var(--text-secondary);
+}
+
+.dark .border-slate-700 {
+  border-color: var(--border-color);
+}

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Import theme context and styles
+import { ThemeProvider } from './src/contexts/ThemeContext';
+import './src/styles/theme.css';
+
 // Import original components
 import { Logo } from './src/components/Logo';
 import { LandingPage } from './src/components/LandingPage';
@@ -269,9 +273,11 @@ function App() {
   };
 
   return (
-    <ErrorBoundary>
-      {renderCurrentView()}
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        {renderCurrentView()}
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 

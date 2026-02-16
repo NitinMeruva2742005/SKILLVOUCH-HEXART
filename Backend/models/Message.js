@@ -19,5 +19,9 @@ const messageSchema = new mongoose.Schema({
   }
 });
 
+// Add indexes for performance
+messageSchema.index({ senderId: 1, receiverId: 1 }); // For conversation queries
+messageSchema.index({ timestamp: -1 }); // For sorting messages by time
+
 export const Message = mongoose.model('Message', messageSchema);
 export default Message;

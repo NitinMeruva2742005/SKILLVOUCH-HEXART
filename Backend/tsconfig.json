@@ -11,31 +11,23 @@
     "noImplicitAny": false,
     "noImplicitReturns": false,
     "noImplicitThis": false,
-    "suppressImplicitAnyIndexErrors": true,
-    "noStrictGenericChecks": true,
-    "noImplicitAny": false,
     "strictNullChecks": false,
     "strictFunctionTypes": false,
     "strictBindCallApply": false,
     "strictPropertyInitialization": false,
-    "noImplicitThis": false,
     "alwaysStrict": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
   "include": [
-    "*.ts"
+    "**/*.ts",
+    "**/*.tsx"
   ],
   "exclude": [
-    "*.js",
-    "server.js",
     "node_modules",
     "dist",
     "**/*.js",
-    "**/*.jsx",
-    "**/server.js",
-    "Backend/server.js",
-    "Backend/**/*.js"
+    "**/*.jsx"
   ],
   "ts-node": {
     "esm": true

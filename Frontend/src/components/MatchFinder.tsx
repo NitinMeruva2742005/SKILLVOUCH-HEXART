@@ -40,49 +40,58 @@ export const MatchFinder: React.FC<MatchFinderProps> = ({ currentUser, onMessage
   const fetchMatches = async () => {
     setLoading(true);
     try {
-      const allUsers = await dbService.getUsers();
-      const strictMentors = skillMatchingEngine.findStrictMentors(currentUser, allUsers);
-      setStrictMatches(strictMentors);
+      // Use the new peer recommendations API
+      const response = await fetch('/api/peers', {
+        method: 'GET',
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      const candidates = allUsers.filter(user => user.id !== currentUser.id);
-      const filteredCandidates = strictMode ? strictMentors : candidates;
-
-      const scoredCandidates = filteredCandidates
-        .map(user => ({
-          user,
-          baseScore: calculateBaseScore(currentUser, user)
-        }))
-        .sort((a, b) => b.baseScore - a.baseScore)
-        .slice(0, 6);
-
-      const results: MatchRecommendation[] = [];
-
-      for (const item of scoredCandidates) {
-        try {
-          const analysis = await analyzeMatch(currentUser, item.user);
-          const finalScore = Math.round((item.baseScore * 0.4) + (analysis.score * 0.6));
-
-          results.push({
-            user: item.user,
-            matchScore: finalScore,
-            reasoning: analysis.reasoning,
-            commonInterests: analysis.commonInterests || []
-          });
-        } catch (e) {
-          console.error("Analysis failed for", item.user.name);
-          results.push({
-            user: item.user,
-            matchScore: item.baseScore,
-            reasoning: "High compatibility based on skill matching.",
-            commonInterests: []
-          });
-        }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch peers: ${response.status}`);
       }
 
-      results.sort((a, b) => b.matchScore - a.matchScore);
-      setRecommendations(results);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        // Filter for strict mode if enabled
+        let filteredRecommendations = data.data;
+        
+        if (strictMode) {
+          // In strict mode, only show users with verified skills that match what current user wants to learn
+          filteredRecommendations = data.data.filter((rec: any) => {
+            return rec.user.skillsKnown.some((skill: any) => 
+              skill.verified && currentUser.skillsToLearn.some((want: any) => 
+                want.skillName && want.skillName.toLowerCase() === skill.skillName.toLowerCase()
+              )
+            );
+          });
+        }
+
+        // Transform the data to match the expected format
+        const recommendations = filteredRecommendations.map((rec: any) => ({
+          user: {
+            id: rec.user.id,
+            name: rec.user.name,
+            avatar: rec.user.avatar,
+            rating: rec.user.rating,
+            skillsKnown: rec.user.skillsKnown,
+            skillsToLearn: rec.user.skillsToLearn
+          },
+          matchScore: rec.matchScore,
+          reasoning: rec.reasoning,
+          commonInterests: rec.commonInterests || []
+        }));
+
+        setRecommendations(recommendations);
+      } else {
+        throw new Error(data.message || 'Failed to fetch peer recommendations');
+      }
     } catch (error) {
       console.error('Error fetching matches:', error);
+      setRecommendations([]); // Set empty array on error
     } finally {
       setLoading(false);
     }

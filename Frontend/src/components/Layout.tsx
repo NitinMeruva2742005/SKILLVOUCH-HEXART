@@ -10,6 +10,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { Logo } from './Logo';
+import { ThemeToggle } from './ThemeToggle';
 
 interface LayoutProps {
   currentView: View;
@@ -23,11 +24,6 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ currentView, onNavigate, children, user, onLogout, unreadCount = 0 }) => {
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // Force dark mode
-  useEffect(() => {
-    document.documentElement.classList.add('dark');
-  }, []);
 
   // Close mobile menu when view changes
   useEffect(() => {
@@ -94,6 +90,13 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onNavigate, childre
         <div className="p-4 border-t border-slate-800 space-y-2">
            <div className="mb-2 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Settings</div>
            <NavItem view={View.PROFILE} icon={UserCircle} label="Profile" />
+           
+           <div className="px-4 py-2">
+             <div className="flex items-center justify-between">
+               <span className="text-sm text-slate-400">Theme</span>
+               <ThemeToggle />
+             </div>
+           </div>
            
            <button
              onClick={onLogout}

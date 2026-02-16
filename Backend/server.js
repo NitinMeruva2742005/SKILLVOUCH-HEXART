@@ -24,6 +24,8 @@ import bcrypt from "bcryptjs";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+import { Server } from "socket.io";
+import { createServer } from "http";
 
 // Load environment variables
 dotenv.config();
@@ -59,10 +61,7 @@ const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://meruvanithinkumarreddy
 const JWT_SECRET = process.env.JWT_SECRET || "sQQTP8UgvUDMaorbj4P1aRIcbAyA2uun0o1FV+YdLKM=";
 const PORT = process.env.PORT || 5001;
 
-console.log('🔧 Starting server with configuration:');
 console.log(`🔗 MongoDB URI: ${MONGO_URI ? 'Set' : 'Missing'}`);
-console.log(`🔐 JWT Secret: ${JWT_SECRET ? 'Set' : 'Missing'}`);
-console.log(`🚀 PORT: ${PORT}`);
 
 // Validate AI Configuration
 console.log('🤖 Validating AI Configuration...');
@@ -173,19 +172,10 @@ process.on('SIGINT', async () => {
 // Initialize database connection
 connectDB();
 
-// Protected middleware
+// Protected middleware - reads from HTTP-only cookie
 const protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: "Access denied. No token provided."
-      });
-    }
-    
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = req.cookies.token;
     
     if (!token) {
       return res.status(401).json({
@@ -469,6 +459,14 @@ app.post("/api/auth/signup", async (req, res) => {
     
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     
+    // Set HTTP-only cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
     // Return user data without password
     const userResponse = {
       _id: user._id,
@@ -481,7 +479,6 @@ app.post("/api/auth/signup", async (req, res) => {
       success: true,
       message: "User created successfully",
       data: { 
-        token,
         user: userResponse
       }
     });
@@ -537,6 +534,14 @@ app.post("/api/auth/login", async (req, res) => {
     
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
     
+    // Set HTTP-only cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
     // Return user data without password
     const userResponse = {
       _id: user._id,
@@ -548,7 +553,6 @@ app.post("/api/auth/login", async (req, res) => {
       success: true,
       message: "Login successful",
       data: { 
-        token,
         user: userResponse
       }
     });
@@ -560,6 +564,28 @@ app.post("/api/auth/login", async (req, res) => {
         message: "Database connection error. Please try again."
       });
     }
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// Logout route - clears HTTP-only cookie
+app.post("/api/auth/logout", (req, res) => {
+  try {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    
+    res.json({
+      success: true,
+      message: "Logout successful"
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
     res.status(500).json({
       success: false,
       message: "Server error"
@@ -1566,7 +1592,6 @@ app.use((err, req, res, next) => {
 app.get('/api/messages/conversations', protect, async (req, res) => {
   try {
     const userId = req.user._id;
-    console.log(`[API] GET /api/messages/conversations - User: ${userId}`);
     
     const conversations = await Message.aggregate([
       {
@@ -1619,7 +1644,6 @@ app.get('/api/messages/conversations', protect, async (req, res) => {
       }
     ]);
 
-    console.log(`[API] GET /api/messages/conversations - User: ${userId} - 200 OK (${conversations.length} conversations)`);
     
     res.json({
       success: true,
@@ -1640,11 +1664,9 @@ app.get('/api/messages/conversation', protect, async (req, res) => {
     const { user1Id, user2Id } = req.query;
     const userId = req.user._id;
     
-    console.log(`[API] GET /api/messages/conversation - User: ${userId} - With: ${user2Id}`);
     
     // Verify user is part of the conversation
     if (userId !== user1Id && userId !== user2Id) {
-      console.log(`[API] GET /api/messages/conversation - User: ${userId} - 403 FORBIDDEN`);
       return res.status(403).json({
         success: false,
         message: "Access denied"
@@ -1658,7 +1680,6 @@ app.get('/api/messages/conversation', protect, async (req, res) => {
       ]
     }).sort({ createdAt: 1 });
 
-    console.log(`[API] GET /api/messages/conversation - User: ${userId} - 200 OK (${messages.length} messages)`);
     
     res.json({
       success: true,
@@ -1679,7 +1700,6 @@ app.post('/api/messages/send', protect, async (req, res) => {
     const { receiverId, content } = req.body;
     const senderId = req.user._id;
     
-    console.log(`[API] POST /api/messages/send - User: ${senderId} - To: ${receiverId}`);
     
     const message = new Message({
       senderId,
@@ -1690,7 +1710,6 @@ app.post('/api/messages/send', protect, async (req, res) => {
     
     await message.save();
     
-    console.log(`[API] POST /api/messages/send - User: ${senderId} - 201 OK`);
     
     res.status(201).json({
       success: true,
@@ -1711,7 +1730,6 @@ app.post('/api/messages', protect, async (req, res) => {
     const { receiverId, content } = req.body;
     const senderId = req.user._id;
     
-    console.log(`[API] POST /api/messages - User: ${senderId} - To: ${receiverId}`);
     
     const message = new Message({
       senderId,
@@ -1722,7 +1740,6 @@ app.post('/api/messages', protect, async (req, res) => {
     
     await message.save();
     
-    console.log(`[API] POST /api/messages - User: ${senderId} - 201 OK`);
     
     res.status(201).json({
       success: true,
@@ -1742,14 +1759,12 @@ app.get('/api/messages/unread-count', protect, async (req, res) => {
   try {
     const userId = req.user._id;
     
-    console.log(`[API] GET /api/messages/unread-count - User: ${userId}`);
     
     const unreadCount = await Message.countDocuments({
       receiverId: userId,
       isRead: false
     });
 
-    console.log(`[API] GET /api/messages/unread-count - User: ${userId} - 200 OK (${unreadCount} unread)`);
     
     res.json({
       success: true,
@@ -1770,7 +1785,6 @@ app.post('/api/messages/mark-as-read', protect, async (req, res) => {
     const { senderId } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/messages/mark-as-read - User: ${userId} - From: ${senderId}`);
     
     await Message.updateMany(
       {
@@ -1781,7 +1795,6 @@ app.post('/api/messages/mark-as-read', protect, async (req, res) => {
       { isRead: true }
     );
 
-    console.log(`[API] POST /api/messages/mark-as-read - User: ${userId} - 200 OK`);
     
     res.json({
       success: true,
@@ -1800,7 +1813,6 @@ app.post('/api/messages/mark-as-read', protect, async (req, res) => {
 app.get('/api/conversations', protect, async (req, res) => {
   try {
     const userId = req.user._id;
-    console.log(`[API] GET /api/conversations - User: ${userId}`);
     
     const conversations = await Message.aggregate([
       {
@@ -1853,7 +1865,6 @@ app.get('/api/conversations', protect, async (req, res) => {
       }
     ]);
 
-    console.log(`[API] GET /api/conversations - User: ${userId} - 200 OK (${conversations.length} conversations)`);
     
     res.json({
       success: true,
@@ -1874,16 +1885,14 @@ app.get('/api/messages/:userId', protect, async (req, res) => {
     const { userId } = req.params;
     const currentUserId = req.user._id;
     
-    console.log(`[API] GET /api/messages/${userId} - User: ${currentUserId}`);
     
     const messages = await Message.find({
       $or: [
         { senderId: currentUserId, receiverId: userId },
         { senderId: userId, receiverId: currentUserId }
       ]
-    }).sort({ createdAt: 1 });
+    }).sort({ createdAt: -1 }).limit(50).sort({ createdAt: 1 }); // Get last 50, then sort chronologically
 
-    console.log(`[API] GET /api/messages/${userId} - User: ${currentUserId} - 200 OK (${messages.length} messages)`);
     
     res.json({
       success: true,
@@ -1906,7 +1915,28 @@ app.post('/api/requests', protect, async (req, res) => {
     const exchangeData = req.body;
     const requesterId = req.user._id;
     
-    console.log(`[API] POST /api/requests - User: ${requesterId}`);
+    
+    // Prevent self-requests
+    if (requesterId.toString() === exchangeData.receiverId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot send an exchange request to yourself"
+      });
+    }
+    
+    // Check for duplicate requests
+    const existingRequest = await Exchange.findOne({
+      requesterId,
+      receiverId: exchangeData.receiverId,
+      status: { $in: ['pending', 'accepted'] }
+    });
+    
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending or accepted exchange request with this user"
+      });
+    }
     
     const exchange = new Exchange({
       ...exchangeData,
@@ -1917,7 +1947,6 @@ app.post('/api/requests', protect, async (req, res) => {
     
     await exchange.save();
     
-    console.log(`[API] POST /api/requests - User: ${requesterId} - 201 OK`);
     
     res.status(201).json({
       success: true,
@@ -1938,7 +1967,6 @@ app.get('/api/requests', protect, async (req, res) => {
     const { userId } = req.query;
     const currentUserId = req.user._id;
     
-    console.log(`[API] GET /api/requests - User: ${currentUserId}`);
     
     const requests = await Exchange.find({
       $or: [
@@ -1947,7 +1975,6 @@ app.get('/api/requests', protect, async (req, res) => {
       ]
     }).populate('requesterId receiverId');
 
-    console.log(`[API] GET /api/requests - User: ${currentUserId} - 200 OK (${requests.length} requests)`);
     
     res.json({
       success: true,
@@ -1969,7 +1996,6 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
     const { status, rating, feedbackComment } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] PUT /api/requests/${id}/status - User: ${userId} - Status: ${status}`);
     
     // Validate status transitions
     const validStatuses = ['Pending', 'Accepted', 'Rejected', 'Completed'];
@@ -1982,7 +2008,6 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
 
     const exchange = await Exchange.findById(id);
     if (!exchange) {
-      console.log(`[API] PUT /api/requests/${id}/status - User: ${userId} - 404 NOT FOUND`);
       return res.status(404).json({
         success: false,
         message: "Exchange request not found"
@@ -2034,10 +2059,28 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
     } else {
       // Handle other status updates
       exchange.status = status;
+      
+      // Create chat room when request is accepted
+      if (status === 'Accepted') {
+        // Create a unique room ID for the chat
+        const roomId = `exchange_${exchange._id}_${Date.now()}`;
+        exchange.chatRoomId = roomId;
+        
+        // TODO: Could also create a Conversation document if needed
+        // const conversation = new Conversation({
+        //   participants: [exchange.requesterId, exchange.receiverId],
+        //   roomId,
+        //   exchangeId: exchange._id,
+        //   createdAt: new Date()
+        // });
+        // await conversation.save();
+        
+        console.log(`[DB] Created chat room - Exchange: ${exchange._id} - Room: ${roomId}`);
+      }
+      
       await exchange.save();
     }
 
-    console.log(`[API] PUT /api/requests/${id}/status - User: ${userId} - 200 OK`);
     
     res.json({
       success: true,
@@ -2057,24 +2100,75 @@ app.put('/api/requests/:id/status', protect, async (req, res) => {
 // Submit feedback
 app.post('/api/feedback', protect, async (req, res) => {
   try {
-    const feedbackData = req.body;
+    const { exchangeId, rating, comment } = req.body;
     const fromUserId = req.user._id;
     
-    console.log(`[API] POST /api/feedback - User: ${fromUserId}`);
+    
+    // Validate required fields
+    if (!exchangeId || !rating) {
+      return res.status(400).json({
+        success: false,
+        message: "Exchange ID and rating are required"
+      });
+    }
+    
+    // Validate rating (1-5)
+    if (rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be an integer between 1 and 5"
+      });
+    }
+    
+    // Find the exchange
+    const exchange = await Exchange.findById(exchangeId);
+    if (!exchange) {
+      return res.status(404).json({
+        success: false,
+        message: "Exchange not found"
+      });
+    }
+    
+    // Check if exchange is completed
+    if (exchange.status !== 'Completed') {
+      return res.status(400).json({
+        success: false,
+        message: "Feedback can only be submitted for completed exchanges"
+      });
+    }
+    
+    // Check if user is part of the exchange
+    if (exchange.requesterId.toString() !== fromUserId.toString() && 
+        exchange.receiverId.toString() !== fromUserId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to submit feedback for this exchange"
+      });
+    }
+    
+    // Check if user already submitted feedback for this exchange
+    const existingFeedback = exchange.feedback?.find(f => f.fromUserId.toString() === fromUserId.toString());
+    if (existingFeedback) {
+      return res.status(400).json({
+        success: false,
+        message: "You have already submitted feedback for this exchange"
+      });
+    }
     
     const feedback = {
-      ...feedbackData,
+      exchangeId,
+      rating,
+      comment: comment || '',
       fromUserId,
       createdAt: new Date()
     };
     
     // For now, store in exchange (can be extended to separate feedback collection)
     await Exchange.findByIdAndUpdate(
-      feedbackData.exchangeId,
+      exchangeId,
       { $push: { feedback } }
     );
     
-    console.log(`[API] POST /api/feedback - User: ${fromUserId} - 201 OK`);
     
     res.status(201).json({
       success: true,
@@ -2095,14 +2189,12 @@ app.get('/api/feedback/received', protect, async (req, res) => {
     const { userId } = req.query;
     const currentUserId = req.user._id;
     
-    console.log(`[API] GET /api/feedback/received - User: ${currentUserId}`);
     
     const feedback = await Exchange.find({
       receiverId: userId || currentUserId,
       feedback: { $exists: true, $ne: [] }
     }).select('feedback');
 
-    console.log(`[API] GET /api/feedback/received - User: ${currentUserId} - 200 OK`);
     
     res.json({
       success: true,
@@ -2123,7 +2215,6 @@ app.get('/api/feedback/stats', protect, async (req, res) => {
     const { userId } = req.query;
     const currentUserId = req.user._id;
     
-    console.log(`[API] GET /api/feedback/stats - User: ${currentUserId}`);
     
     // Simple stats - can be enhanced
     const stats = {
@@ -2132,7 +2223,6 @@ app.get('/api/feedback/stats', protect, async (req, res) => {
       averageRating: 0
     };
     
-    console.log(`[API] GET /api/feedback/stats - User: ${currentUserId} - 200 OK`);
     
     res.json({
       success: true,
@@ -2188,13 +2278,123 @@ app.post('/api/mistral/generate-quiz', protect, async (req, res) => {
   }
 });
 
-// Peer Recommendations
+// Get peers with match recommendations
+app.get('/api/peers', protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    
+    
+    // Get current user's skills and preferences
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Find all other users
+    const allUsers = await User.find({
+      _id: { $ne: userId }
+    }).select('name email avatar knownSkills skillsToLearn rating totalReviews');
+
+    // Calculate matching scores for each user
+    const scoredUsers = allUsers.map(user => {
+      let score = 0;
+      let reasoning = [];
+
+      // Skill Complementarity (60 points): User can teach what I want to learn
+      const userCanTeach = user.knownSkills.filter(skill => 
+        currentUser.skillsToLearn.some(learn => 
+          learn.skillName && learn.skillName.toLowerCase() === skill.skillName.toLowerCase()
+        )
+      );
+      
+      // I can teach what user wants to learn (Reciprocity)
+      const iCanTeach = currentUser.knownSkills.filter(skill => 
+        user.skillsToLearn.some(learn => 
+          learn.skillName && learn.skillName.toLowerCase() === skill.skillName.toLowerCase()
+        )
+      );
+
+      // Skill Complementarity Score (60 points max)
+      const complementarityScore = Math.min(userCanTeach.length * 20, 60);
+      score += complementarityScore;
+      if (userCanTeach.length > 0) {
+        reasoning.push(`${userCanTeach.length} skills you want to learn`);
+      }
+
+      // Reciprocity Score (30 points max)
+      const reciprocityScore = Math.min(iCanTeach.length * 15, 30);
+      score += reciprocityScore;
+      if (iCanTeach.length > 0) {
+        reasoning.push(`${iCanTeach.length} skills you can teach`);
+      }
+
+      // Rating Bonus (10 points max)
+      const ratingBonus = Math.min(user.rating * 2, 10);
+      score += ratingBonus;
+      reasoning.push(`Rating: ${user.rating}/5`);
+
+      // Determine compatibility level
+      let compatibilityLevel = 'Low';
+      if (score >= 80) compatibilityLevel = 'Excellent';
+      else if (score >= 60) compatibilityLevel = 'High';
+      else if (score >= 40) compatibilityLevel = 'Medium';
+
+      return {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+          rating: user.rating,
+          skillsKnown: user.knownSkills,
+          skillsToLearn: user.skillsToLearn
+        },
+        matchScore: Math.min(100, score),
+        reasoning: reasoning.join(', '),
+        commonInterests: [...userCanTeach.map(s => s.skillName), ...iCanTeach.map(s => s.skillName)]
+      };
+    });
+
+    // Sort by score descending and apply pagination
+    const sortedUsers = scoredUsers
+      .sort((a, b) => b.matchScore - a.matchScore);
+    
+    const paginatedUsers = sortedUsers.slice(skip, skip + limit);
+    const totalPeers = sortedUsers.length;
+
+    res.json({
+      success: true,
+      data: paginatedUsers,
+      pagination: {
+        page,
+        limit,
+        total: totalPeers,
+        pages: Math.ceil(totalPeers / limit),
+        hasNext: skip + limit < totalPeers,
+        hasPrev: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('[API] GET /api/peers failed:', error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get peers"
+    });
+  }
+});
+
+// Peer Recommendations (existing POST route)
 app.post('/api/peer-recommendations', protect, async (req, res) => {
   try {
     const { skills, preferences } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/peer-recommendations - User: ${userId}`);
     
     // Get current user's skills and preferences
     const currentUser = await User.findById(userId);
@@ -2278,7 +2478,6 @@ app.post('/api/peer-recommendations', protect, async (req, res) => {
       .sort((a, b) => b.score - a.score)
       .slice(0, 10); // Top 10 recommendations
 
-    console.log(`[API] POST /api/peer-recommendations - User: ${userId} - 200 OK (${filteredUsers.length} recommendations)`);
     
     res.json({
       success: true,
@@ -2299,7 +2498,6 @@ app.post('/api/skills/suggest', protect, async (req, res) => {
     const { userSkills, preferences } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/skills/suggest - User: ${userId}`);
     
     // Simple skill suggestions - can be enhanced with AI
     const suggestions = [
@@ -2307,7 +2505,6 @@ app.post('/api/skills/suggest', protect, async (req, res) => {
       'Docker', 'AWS', 'MongoDB', 'PostgreSQL', 'GraphQL'
     ].filter(skill => !userSkills.includes(skill));
 
-    console.log(`[API] POST /api/skills/suggest - User: ${userId} - 200 OK (${suggestions.length} suggestions)`);
     
     res.json({
       success: true,
@@ -2328,7 +2525,6 @@ app.post('/api/roadmap/generate', protect, async (req, res) => {
     const { skill, currentLevel = 'Beginner', targetLevel = 'Advanced' } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/roadmap/generate - User: ${userId} - Skill: ${skill}`);
     
     if (!skill || typeof skill !== 'string') {
       return res.status(400).json({
@@ -2340,7 +2536,6 @@ app.post('/api/roadmap/generate', protect, async (req, res) => {
     // Check if roadmap already exists for this user-skill pair
     const existingRoadmap = await Roadmap.findOne({ userId, skillName: skill });
     if (existingRoadmap) {
-      console.log(`[API] POST /api/roadmap/generate - User: ${userId} - Returning existing roadmap`);
       return res.json({
         success: true,
         data: existingRoadmap,
@@ -2381,7 +2576,6 @@ app.post('/api/roadmap/generate', protect, async (req, res) => {
       }
     );
 
-    console.log(`[API] POST /api/roadmap/generate - User: ${userId} - 200 OK (Stored: ${roadmap._id})`);
     
     res.json({
       success: true,
@@ -2496,7 +2690,6 @@ Requirements:
 app.get('/api/analytics/dashboard', protect, async (req, res) => {
   try {
     const userId = req.user._id;
-    console.log(`[API] GET /api/analytics/dashboard - User: ${userId}`);
     
     // Get user data
     const user = await User.findById(userId);
@@ -2620,7 +2813,6 @@ app.get('/api/analytics/dashboard', protect, async (req, res) => {
       }
     };
 
-    console.log(`[API] GET /api/analytics/dashboard - User: ${userId} - 200 OK`);
     
     res.json({
       success: true,
@@ -2641,11 +2833,9 @@ app.get('/api/learning/roadmap', protect, async (req, res) => {
     const { skill } = req.query;
     const userId = req.user._id;
     
-    console.log(`[API] GET /api/learning/roadmap - User: ${userId} - Skill: ${skill}`);
     
     const roadmap = await Roadmap.findOne({ userId, skillName: skill });
     
-    console.log(`[API] GET /api/learning/roadmap - User: ${userId} - 200 OK`);
     
     res.json({
       success: true,
@@ -2666,7 +2856,6 @@ app.post('/api/ai-sql-query', protect, async (req, res) => {
     const { query } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/ai-sql-query - User: ${userId}`);
     
     // Placeholder for AI SQL query generation
     res.json({
@@ -2688,7 +2877,6 @@ app.post('/api/execute-sql', protect, async (req, res) => {
     const { sql } = req.body;
     const userId = req.user._id;
     
-    console.log(`[API] POST /api/execute-sql - User: ${userId}`);
     
     // Placeholder for SQL execution
     res.json({
@@ -2759,20 +2947,90 @@ app.use((error, req, res, next) => {
 
 // 404 handler
 app.use((req, res) => {
-  console.log(`[API] ${req.method} ${req.originalUrl} - 404 NOT FOUND`);
   res.status(404).json({
     success: false,
     message: `Route ${req.originalUrl} not found`
   });
 });
 
+// Create HTTP server
+const server = createServer(app);
+
+// Initialize Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: ["https://skillvouch-hexart.vercel.app", "https://skillvouch-hexart2026.vercel.app", "http://localhost:3000", "http://localhost:5173", "http://localhost:3001"],
+    credentials: true
+  }
+});
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log(`🔌 User connected: ${socket.id}`);
+
+  // Join room event
+  socket.on('joinRoom', (roomId) => {
+    socket.join(roomId);
+    console.log(`👥 User ${socket.id} joined room: ${roomId}`);
+    
+    // Send confirmation
+    socket.emit('roomJoined', roomId);
+  });
+
+  // Leave room event
+  socket.on('leaveRoom', (roomId) => {
+    socket.leave(roomId);
+    console.log(`👋 User ${socket.id} left room: ${roomId}`);
+  });
+
+  // Send message event
+  socket.on('sendMessage', async (data) => {
+    try {
+      const { roomId, senderId, receiverId, content } = data;
+      
+      // Save message to database
+      const message = new Message({
+        senderId,
+        receiverId,
+        content,
+        roomId,
+        createdAt: new Date()
+      });
+      
+      await message.save();
+      
+      // Broadcast to room
+      io.to(roomId).emit('message', {
+        _id: message._id,
+        senderId,
+        receiverId,
+        content,
+        roomId,
+        createdAt: message.createdAt
+      });
+      
+      console.log(`💬 Message sent in room ${roomId} by user ${senderId}`);
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      socket.emit('messageError', { error: 'Failed to send message' });
+    }
+  });
+
+  // Typing indicator
+  socket.on('typing', (data) => {
+    const { roomId, userId, isTyping } = data;
+    socket.to(roomId).emit('userTyping', { userId, isTyping });
+  });
+
+  // Disconnect
+  socket.on('disconnect', () => {
+    console.log(`🔌 User disconnected: ${socket.id}`);
+  });
+});
+
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+server.listen(PORT, () => {
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Database: ${getDatabaseStatus()}`);
-  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
-  console.log(`🧪 Database test: http://localhost:${PORT}/api/test-db`);
 });
 
 export default app;

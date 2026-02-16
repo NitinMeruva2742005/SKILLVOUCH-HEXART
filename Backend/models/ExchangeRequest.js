@@ -26,5 +26,10 @@ const exchangeRequestSchema = new mongoose.Schema({
   }
 });
 
+// Add indexes for performance
+exchangeRequestSchema.index({ fromUserId: 1, toUserId: 1 }); // For duplicate checking
+exchangeRequestSchema.index({ status: 1 }); // For filtering by status
+exchangeRequestSchema.index({ createdAt: -1 }); // For sorting by creation time
+
 export const ExchangeRequest = mongoose.model('ExchangeRequest', exchangeRequestSchema);
 export default ExchangeRequest;

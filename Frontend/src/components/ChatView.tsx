@@ -27,6 +27,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, initialChatUser
   const [feedbackStars, setFeedbackStars] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState('');
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [messageReactions, setMessageReactions] = useState<Record<string, { emoji: string; users: string[]; count: number }[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -260,9 +261,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, initialChatUser
       });
 
       await dbService.sendMessage(currentUser.id, activeUser.id, `Feedback submitted: ${feedbackStars}/5 ⭐`);
-      setShowFeedbackModal(false);
-      setFeedbackStars(5);
-      setFeedbackComment('');
+      setFeedbackSubmitted(true);
+      // Don't close modal immediately - show "Feedback submitted" message
     } finally {
       setSubmittingFeedback(false);
     }
@@ -310,39 +310,51 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, initialChatUser
           </div>
 
           <div className="p-6 space-y-5">
-            <div>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">Rate your experience with {activeUser.name}.</p>
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`p-2 rounded-lg border transition ${
-                      feedbackStars >= v
-                        ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400'
-                        : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-                    }`}
-                    onClick={() => setFeedbackStars(v)}
-                    disabled={submittingFeedback}
-                    title={`${v} star${v === 1 ? '' : 's'}`}
-                  >
-                    <Star className="w-5 h-5" />
-                  </button>
-                ))}
-                <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">{feedbackStars}/5</span>
+            {feedbackSubmitted ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Feedback Submitted</h3>
+                <p className="text-slate-600 dark:text-slate-400">Thank you for your feedback! Your rating helps improve our community.</p>
               </div>
-            </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">Rate your experience with {activeUser.name}.</p>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`p-2 rounded-lg border transition ${
+                          feedbackStars >= v
+                            ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400'
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                        onClick={() => setFeedbackStars(v)}
+                        disabled={submittingFeedback}
+                        title={`${v} star${v === 1 ? '' : 's'}`}
+                      >
+                        <Star className="w-5 h-5" />
+                      </button>
+                    ))}
+                    <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">{feedbackStars}/5</span>
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Comment (optional)</label>
-              <textarea
-                value={feedbackComment}
-                onChange={(e) => setFeedbackComment(e.target.value)}
-                className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 h-28 resize-none"
-                placeholder="Share quick feedback..."
-                disabled={submittingFeedback}
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Comment (optional)</label>
+                  <textarea
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 h-28 resize-none"
+                    placeholder="Share quick feedback..."
+                    disabled={submittingFeedback}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
@@ -354,14 +366,26 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, initialChatUser
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={submitFeedbackAndComplete}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium flex items-center transition disabled:opacity-50"
-              disabled={submittingFeedback}
-            >
-              {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
-            </button>
+            {!feedbackSubmitted && (
+              <button
+                type="button"
+                onClick={submitFeedbackAndComplete}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium flex items-center transition disabled:opacity-50"
+                disabled={submittingFeedback}
+              >
+                {submittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+            )}
+            {feedbackSubmitted && (
+              <button
+                type="button"
+                onClick={() => setShowFeedbackModal(false)}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium flex items-center transition"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Done
+              </button>
+            )}
           </div>
         </div>
       </div>
